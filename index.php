@@ -1,6 +1,6 @@
 <?php
 
-$dsn = '';
+$dsn = '';  // of form 'pdo-driver://[user[:pass]@]host[:port]/db/;
 $clients = array
 (
 );
@@ -54,6 +54,11 @@ if (array_key_exists('_method', $_GET) === true)
 else if (array_key_exists('HTTP_X_HTTP_METHOD_OVERRIDE', $_SERVER) === true)
 {
 	$_SERVER['REQUEST_METHOD'] = strtoupper(trim($_SERVER['HTTP_X_HTTP_METHOD_OVERRIDE']));
+}
+
+function mt_rand_str ($l, $c = 'abcdefghijklmnopqrstuvwxyz1234567890') {
+    for ($s = '', $cl = strlen($c)-1, $i = 0; $i < $l; $s .= $c[mt_rand(0, $cl)], ++$i);
+    return $s;
 }
 
 ArrestDB::Serve('GET', '/(#any)/(#any)/(#any)', function ($table, $id, $data)
@@ -114,8 +119,18 @@ ArrestDB::Serve('GET', '/(#any)/(#any)/(#any)', function ($table, $id, $data)
 	return ArrestDB::Reply($result);
 });
 
-ArrestDB::Serve('GET', '/(#any)/(#num)?', function ($table, $id = null)
+ArrestDB::Serve('GET', '/(#any)/(#num)?', function ($table, $id =  "_all_docs")
 {
+	$query1 = sprintf('SELECT count(*) as total_rows FROM `%s`', $table);
+	$result1 = ArrestDB::Query($query1)[0];
+	if (isset($_GET['skip']) === true) {
+		$result1 = array_merge($result1,array("offset" => $_GET['skip']));
+	} else {
+		$result1 = array_merge($result1,array("offset" => 0));
+	}
+
+
+
 	$query = array
 	(
 		sprintf('SELECT * FROM "%s"', $table),
@@ -150,7 +165,8 @@ ArrestDB::Serve('GET', '/(#any)/(#num)?', function ($table, $id = null)
 	}
 
 	$query = sprintf('%s;', implode(' ', $query));
-	$result = (isset($id) === true) ? ArrestDB::Query($query, $id) : ArrestDB::Query($query);
+
+	$result = ($id != "_all_docs") ? ArrestDB::Query($query, $id) : ArrestDB::Query($query);
 
 	if ($result === false)
 	{
@@ -176,12 +192,21 @@ ArrestDB::Serve('GET', '/(#any)/(#num)?', function ($table, $id = null)
 		);
 	}
 
-	else if (isset($id) === true)
+	else if ($id != "_all_docs")
 	{
 		$result = array_shift($result);
+	} else {
+		foreach ($result as $key => $value) {
+			# code...
+			$result[$key] = array(
+				"id" => $value["id"],
+				"key" => $value["id"],
+				"doc" => $value
+			);
+		}
 	}
 
-	return ArrestDB::Reply($result);
+	return ArrestDB::Reply(array_merge($result1, array("rows"=>$result));
 });
 
 ArrestDB::Serve('DELETE', '/(#any)/(#num)', function ($table, $id)
