@@ -1,21 +1,25 @@
 <?php
 
- $dsn = ''; // $dsn = 'pdo-driver://[user[:pass]@]host[:port]/db/;
+$dsn = '';  // db_driver://user:password@host/db/
+//header('Access-Control-Allow-Origin: *'); 
+//header('Access-Control-Allow-Headers: Content-Type, X-Requested-With, Origin, Accept');
+//header('Access-Control-Allow-Methods: GET, PUT, POST, DELETE');
 $clients = array
 (
 );
+$logging = FALSE;  // TRUE FALSE
 
 /**
 * The MIT License
 * http://creativecommons.org/licenses/MIT/
 *
-* ArrestDB 1.6.2 (github.com/alixaxel/ArrestDB/)
-* Copyright (c) 2013 Alix Axel <alix.axel@gmail.com>
+* ArrestDB 1.8.0 (github.com/alixaxel/ArrestDB/)
+* Copyright (c) 2014 Alix Axel <alix.axel@gmail.com>
 **/
 
-if (strcmp('cli', PHP_SAPI) === 0)
+if (strcmp(PHP_SAPI, 'cli') === 0)
 {
-	exit('Arrest-DB should not be run from CLI.');
+	exit('ArrestDB should not be run from CLI.' . PHP_EOL);
 }
 
 if ((empty($clients) !== true) && (in_array($_SERVER['REMOTE_ADDR'], (array) $clients) !== true))
@@ -56,17 +60,12 @@ else if (array_key_exists('HTTP_X_HTTP_METHOD_OVERRIDE', $_SERVER) === true)
 	$_SERVER['REQUEST_METHOD'] = strtoupper(trim($_SERVER['HTTP_X_HTTP_METHOD_OVERRIDE']));
 }
 
-function mt_rand_str ($l, $c = 'abcdefghijklmnopqrstuvwxyz1234567890') {
-    for ($s = '', $cl = strlen($c)-1, $i = 0; $i < $l; $s .= $c[mt_rand(0, $cl)], ++$i);
-    return $s;
-}
-
 ArrestDB::Serve('GET', '/(#any)/(#any)/(#any)', function ($table, $id, $data)
 {
 	$query = array
 	(
-		sprintf('SELECT * FROM `%s`', $table),
-		sprintf('WHERE `%s` LIKE ?', $id),
+		sprintf('SELECT * FROM "%s"', $table),
+		sprintf('WHERE "%s" %s ?', $id, (ctype_digit($data) === true) ? '=' : 'LIKE'),
 	);
 
 	if (isset($_GET['by']) === true)
@@ -76,16 +75,16 @@ ArrestDB::Serve('GET', '/(#any)/(#any)/(#any)', function ($table, $id, $data)
 			$_GET['order'] = 'ASC';
 		}
 
-		$query[] = sprintf('ORDER BY `%s` %s', $_GET['by'], $_GET['order']);
+		$query[] = sprintf('ORDER BY "%s" %s', $_GET['by'], $_GET['order']);
 	}
 
 	if (isset($_GET['limit']) === true)
 	{
 		$query[] = sprintf('LIMIT %u', $_GET['limit']);
 
-		if (isset($_GET['offset']) === true)
+		if (isset($_GET['skip']) === true)
 		{
-			$query[] = sprintf('OFFSET %u', $_GET['offset']);
+			$query[] = sprintf('OFFSET %u', $_GET['skip']);
 		}
 	}
 
@@ -119,7 +118,7 @@ ArrestDB::Serve('GET', '/(#any)/(#any)/(#any)', function ($table, $id, $data)
 	return ArrestDB::Reply($result);
 });
 
-ArrestDB::Serve('GET', '/(#any)/(#any)?', function ($table, $id = "_all_docs")
+ArrestDB::Serve('GET', '/(#any)/(#num)?', function ($table, $id = "_all_docs")
 {
 	$query1 = sprintf('SELECT count(*) as total_rows FROM `%s`', $table);
 	$result1 = ArrestDB::Query($query1)[0];
@@ -129,16 +128,14 @@ ArrestDB::Serve('GET', '/(#any)/(#any)?', function ($table, $id = "_all_docs")
 		$result1 = array_merge($result1,array("offset" => 0));
 	}
 
-
-
 	$query = array
 	(
-		sprintf('SELECT * FROM `%s`', $table),
+		sprintf('SELECT * FROM "%s"', $table),
 	);
 
 	if ($id != "_all_docs")
 	{
-		$query[] = sprintf('WHERE `%s` = ? LIMIT 1', 'id');
+		$query[] = sprintf('WHERE "%s" = ? LIMIT 1', 'id');
 	}
 
 	else
@@ -150,7 +147,7 @@ ArrestDB::Serve('GET', '/(#any)/(#any)?', function ($table, $id = "_all_docs")
 				$_GET['order'] = 'ASC';
 			}
 
-			$query[] = sprintf('ORDER BY `%s` %s', $_GET['by'], $_GET['order']);
+			$query[] = sprintf('ORDER BY "%s" %s', $_GET['by'], $_GET['order']);
 		}
 
 		if (isset($_GET['limit']) === true)
@@ -165,7 +162,6 @@ ArrestDB::Serve('GET', '/(#any)/(#any)?', function ($table, $id = "_all_docs")
 	}
 
 	$query = sprintf('%s;', implode(' ', $query));
-	//echo $query;
 	$result = ($id != "_all_docs") ? ArrestDB::Query($query, $id) : ArrestDB::Query($query);
 
 	if ($result === false)
@@ -213,7 +209,7 @@ ArrestDB::Serve('DELETE', '/(#any)/(#num)', function ($table, $id)
 {
 	$query = array
 	(
-		sprintf('DELETE FROM `%s` WHERE `%s` = ?', $table, 'id'),
+		sprintf('DELETE FROM "%s" WHERE "%s" = ?', $table, 'id'),
 	);
 
 	$query = sprintf('%s;', implode(' ', $query));
@@ -315,12 +311,12 @@ ArrestDB::Serve('POST', '/(#any)', function ($table)
 
 			foreach ($row as $key => $value)
 			{
-				$data[sprintf('`%s`', $key)] = '?';
+				$data[sprintf('"%s"', $key)] = $value;
 			}
 
 			$query = array
 			(
-				sprintf('INSERT INTO `%s` (%s) VALUES (%s)', $table, implode(', ', array_keys($data)), implode(', ', $data)),
+				sprintf('INSERT INTO "%s" (%s) VALUES (%s)', $table, implode(', ', array_keys($data)), implode(', ', array_fill(0, count($data), '?'))),
 			);
 
 			$queries[] = array
@@ -401,16 +397,16 @@ ArrestDB::Serve('PUT', '/(#any)/(#num)', function ($table, $id)
 
 		foreach ($GLOBALS['_PUT'] as $key => $value)
 		{
-			$data[$key] = sprintf('`%s` = ?', $key);
+			$data[$key] = sprintf('"%s" = ?', $key);
 		}
 
 		$query = array
 		(
-			sprintf('UPDATE `%s` SET %s WHERE `%s` = ?', $table, implode(', ', $data), 'id'),
+			sprintf('UPDATE "%s" SET %s WHERE "%s" = ?', $table, implode(', ', $data), 'id'),
 		);
 
 		$query = sprintf('%s;', implode(' ', $query));
-		$result = ArrestDB::Query($query, $GLOBALS['_PUT']);
+		$result = ArrestDB::Query($query, $GLOBALS['_PUT'], $id);
 
 		if ($result === false)
 		{
@@ -455,155 +451,160 @@ class ArrestDB
 {
 	public static function Query($query = null)
 	{
-		static $db = null;
-		static $result = array();
+	    global $logging;
+	    static $db = null;
+	    static $result = array();
 
-		try
-		{
-			if (isset($db, $query) === true)
-			{
-				if (empty($result[$hash = crc32($query)]) === true)
-				{
-					$result[$hash] = $db->prepare($query);
-				}
+	    try
+	    {
+	        if (isset($db, $query) === true)
+	        {
+	            if (strncasecmp($db->getAttribute(\PDO::ATTR_DRIVER_NAME), 'mysql', 5) === 0)
+	            {
+	                $query = strtr($query, '"', '`');
+	            }
 
-				$data = array_slice(func_get_args(), 1);
+	            if (empty($result[$hash = crc32($query)]) === true)
+	            {
+	                $result[$hash] = $db->prepare($query);
+	            }
 
-				if (count($data, COUNT_RECURSIVE) > count($data))
-				{
-					$data = iterator_to_array(new \RecursiveIteratorIterator(new \RecursiveArrayIterator($data)), false);
-				}
+	            $data = array_slice(func_get_args(), 1);
 
-				if ($result[$hash]->execute($data) === true)
-				{
-					$sequence = null;
+	            if (count($data, COUNT_RECURSIVE) > count($data))
+	            {
+	                $data = iterator_to_array(new \RecursiveIteratorIterator(new \RecursiveArrayIterator($data)), false);
+	            }
 
-					if ((strncmp('pgsql', $db->getAttribute(\PDO::ATTR_DRIVER_NAME), 5) === 0) && (sscanf($query, 'INSERT INTO %s', $sequence) > 0))
-					{
-						$sequence = sprintf('%s_id_seq', trim($sequence, '`'));
-					}
+	            if ($logging) file_put_contents(__DIR__ . '/query.log', '[QUERY] ' . vsprintf(str_replace(array('%', '?'), array('%%', "'%s'"), $query), $data) . "\n", FILE_APPEND);
 
-					switch (strstr($query, ' ', true))
-					{
-						case 'INSERT':
-						case 'REPLACE':
-							return $db->lastInsertId($sequence);
+	            if ($result[$hash]->execute($data) === true)
+	            {
+	                $sequence = null;
 
-						case 'UPDATE':
-						case 'DELETE':
-							return $result[$hash]->rowCount();
+	                if ((strncmp($db->getAttribute(\PDO::ATTR_DRIVER_NAME), 'pgsql', 5) === 0) && (sscanf($query, 'INSERT INTO %s', $sequence) > 0))
+	                {
+	                    $sequence = sprintf('%s_id_seq', trim($sequence, '"'));
+	                }
 
-						case 'SELECT':
-						case 'EXPLAIN':
-						case 'PRAGMA':
-						case 'SHOW':
-							return $result[$hash]->fetchAll();
-					}
+	                switch (strstr($query, ' ', true))
+	                {
+	                    case 'INSERT':
+	                    case 'REPLACE':
+	                        return $db->lastInsertId($sequence);
 
-					return true;
-				}
+	                    case 'UPDATE':
+	                    case 'DELETE':
+	                        return $result[$hash]->rowCount();
 
-				return false;
-			}
+	                    case 'SELECT':
+	                    case 'EXPLAIN':
+	                    case 'PRAGMA':
+	                    case 'SHOW':
+	                        return $result[$hash]->fetchAll();
+	                }
 
-			else if (isset($query) === true)
-			{
-				$options = array
-				(
-					\PDO::ATTR_CASE => \PDO::CASE_NATURAL,
-					\PDO::ATTR_DEFAULT_FETCH_MODE => \PDO::FETCH_ASSOC,
-					\PDO::ATTR_EMULATE_PREPARES => false,
-					\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
-					\PDO::ATTR_ORACLE_NULLS => \PDO::NULL_NATURAL,
-					\PDO::ATTR_STRINGIFY_FETCHES => false,
-				);
+	                return true;
+	            }
 
-				if (preg_match('~^sqlite://([[:print:]]++)$~i', $query, $dsn) > 0)
-				{
-					$options += array
-					(
-						\PDO::ATTR_TIMEOUT => 3,
-					);
+	            return false;
+	        }
 
-					$db = new \PDO(sprintf('sqlite:%s', $dsn[1]), null, null, $options);
-					$pragmas = array
-					(
-						'automatic_index' => 'ON',
-						'cache_size' => '8192',
-						'foreign_keys' => 'ON',
-						'journal_size_limit' => '67110000',
-						'locking_mode' => 'NORMAL',
-						'page_size' => '4096',
-						'recursive_triggers' => 'ON',
-						'secure_delete' => 'ON',
-						'synchronous' => 'NORMAL',
-						'temp_store' => 'MEMORY',
-						'journal_mode' => 'WAL',
-						'wal_autocheckpoint' => '4096',
-					);
+	        else if (isset($query) === true)
+	        {
+	            $options = array
+	            (
+	                \PDO::ATTR_CASE => \PDO::CASE_NATURAL,
+	                \PDO::ATTR_DEFAULT_FETCH_MODE => \PDO::FETCH_ASSOC,
+	                \PDO::ATTR_EMULATE_PREPARES => false,
+	                \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
+	                \PDO::ATTR_ORACLE_NULLS => \PDO::NULL_NATURAL,
+	                \PDO::ATTR_STRINGIFY_FETCHES => false,
+	            );
 
-					if (strncasecmp('WIN', PHP_OS, 3) !== 0)
-					{
-						$memory = 131072;
- 
-						if (($page = intval(shell_exec('getconf PAGESIZE'))) > 0)
-						{
-							$pragmas['page_size'] = $page;
-						}
- 
-						if (is_readable('/proc/meminfo') === true)
-						{
-							if (is_resource($handle = fopen('/proc/meminfo', 'rb')) === true)
-							{
-								while (($line = fgets($handle, 1024)) !== false)
-								{
-									if (sscanf($line, 'MemTotal: %d kB', $memory) == 1)
-									{
-										$memory = round($memory / 131072) * 131072; break;
-									}
-								}
- 
-								fclose($handle);
-							}
-						}
- 
-						$pragmas['cache_size'] = intval($memory * 0.25 / ($pragmas['page_size'] / 1024));
-						$pragmas['wal_autocheckpoint'] = $pragmas['cache_size'] / 2;
-					}
+	            if (preg_match('~^sqlite://([[:print:]]++)$~i', $query, $dsn) > 0)
+	            {
+	                $options += array
+	                (
+	                    \PDO::ATTR_TIMEOUT => 3,
+	                );
 
-					foreach ($pragmas as $key => $value)
-					{
-						$db->exec(sprintf('PRAGMA %s=%s;', $key, $value));
-					}
-				}
+	                $db = new \PDO(sprintf('sqlite:%s', $dsn[1]), null, null, $options);
+	                $pragmas = array
+	                (
+	                    'automatic_index' => 'ON',
+	                    'cache_size' => '8192',
+	                    'foreign_keys' => 'ON',
+	                    'journal_size_limit' => '67110000',
+	                    'locking_mode' => 'NORMAL',
+	                    'page_size' => '4096',
+	                    'recursive_triggers' => 'ON',
+	                    'secure_delete' => 'ON',
+	                    'synchronous' => 'NORMAL',
+	                    'temp_store' => 'MEMORY',
+	                    'journal_mode' => 'WAL',
+	                    'wal_autocheckpoint' => '4096',
+	                );
 
-				else if (preg_match('~^(mysql|pgsql)://(?:(.+?)(?::(.+?))?@)?([^/:@]++)(?::(\d++))?/(\w++)/?$~i', $query, $dsn) > 0)
-				{
-					$options += array
-					(
-						\PDO::ATTR_AUTOCOMMIT => true,
-					);
+	                if (strncasecmp(PHP_OS, 'WIN', 3) !== 0)
+	                {
+	                    $memory = 131072;
 
-					if (strncasecmp('mysql', $query, 5) === 0)
-					{
-						$options += array
-						(
-							\PDO::MYSQL_ATTR_INIT_COMMAND => 'SET NAMES "utf8" COLLATE "utf8_general_ci", time_zone = "+00:00";',
-							\PDO::MYSQL_ATTR_USE_BUFFERED_QUERY => true,
-						);
-					}
+	                    if (($page = intval(shell_exec('getconf PAGESIZE'))) > 0)
+	                    {
+	                        $pragmas['page_size'] = $page;
+	                    }
 
-					$db = new \PDO(sprintf('%s:host=%s;port=%s;dbname=%s', $dsn[1], $dsn[4], $dsn[5], $dsn[6]), $dsn[2], $dsn[3], $options);
-				}
-			}
-		}
+	                    if (is_readable('/proc/meminfo') === true)
+	                    {
+	                        if (is_resource($handle = fopen('/proc/meminfo', 'rb')) === true)
+	                        {
+	                            while (($line = fgets($handle, 1024)) !== false)
+	                            {
+	                                if (sscanf($line, 'MemTotal: %d kB', $memory) == 1)
+	                                {
+	                                    $memory = round($memory / 131072) * 131072; break;
+	                                }
+	                            }
 
-		catch (\Exception $e)
-		{
-			return false;
-		}
+	                            fclose($handle);
+	                        }
+	                    }
 
-		return (isset($db) === true) ? $db : false;
+	                    $pragmas['cache_size'] = intval($memory * 0.25 / ($pragmas['page_size'] / 1024));
+	                    $pragmas['wal_autocheckpoint'] = $pragmas['cache_size'] / 2;
+	                }
+
+	                foreach ($pragmas as $key => $value)
+	                {
+	                    $db->exec(sprintf('PRAGMA %s=%s;', $key, $value));
+	                }
+	            }
+
+	            else if (preg_match('~^(mysql|pgsql)://(?:(.+?)(?::(.+?))?@)?([^/:@]++)(?::(\d++))?/(\w++)/?$~i', $query, $dsn) > 0)
+	            {
+	                if (strncasecmp($query, 'mysql', 5) === 0)
+	                {
+	                    $options += array
+	                    (
+	                        \PDO::ATTR_AUTOCOMMIT => true,
+	                        \PDO::MYSQL_ATTR_INIT_COMMAND => 'SET NAMES "utf8" COLLATE "utf8_general_ci", time_zone = "+00:00";',
+	                        \PDO::MYSQL_ATTR_USE_BUFFERED_QUERY => true,
+	                    );
+	                }
+
+	                $db = new \PDO(sprintf('%s:host=%s;port=%s;dbname=%s', $dsn[1], $dsn[4], $dsn[5], $dsn[6]), $dsn[2], $dsn[3], $options);
+	            }
+	        }
+	    }
+
+	    catch (\Exception $e)
+	    {
+	        if ($logging) file_put_contents(__DIR__ . '/query.log', '[EXCEPTION] ' . $e->getMessage() . "\n", FILE_APPEND); 
+	        return false;
+	    }
+
+	    return (isset($db) === true) ? $db : false;
 	}
 
 	public static function Reply($data)
@@ -653,7 +654,7 @@ class ArrestDB
 			$_SERVER['REQUEST_METHOD'] = 'CLI';
 		}
 
-		if ((empty($on) === true) || (strcasecmp($on, $_SERVER['REQUEST_METHOD']) === 0))
+		if ((empty($on) === true) || (strcasecmp($_SERVER['REQUEST_METHOD'], $on) === 0))
 		{
 			if (is_null($root) === true)
 			{

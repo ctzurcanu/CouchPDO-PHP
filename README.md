@@ -16,6 +16,9 @@ Initial fork from:
 or
 - CouchDB
 
+##Recommended
+Use in conjunction with [CouchGrid](https://github.com/ctzurcanu/CouchGrid).
+
 ##Installation
 
 Edit `index.php` and change the `$dsn` variable located at the top, here are some examples:
